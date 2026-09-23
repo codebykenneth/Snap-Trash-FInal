@@ -31,7 +31,7 @@ npx serve .
 Open your browser to:
 
 ```
-http://localhost:8080
+https://snap-trash-829dd.web.app/#/
 ```
 
 The app is responsive and works the same on desktop Chrome/Firefox/Safari and on Android/iOS mobile browsers. "Take Photo" opens the device camera on phones (via `capture="environment"`) and falls back to a normal file picker on desktop.
