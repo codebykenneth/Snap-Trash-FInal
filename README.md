@@ -1,108 +1,122 @@
-# Snap Trash
+# 🗑️ Snap Trash
+### *Snap It. Report It. Clean It.*
 
-**Snap It. Report It. Clean It.**
-Report garbage. Connect with local cleaners. Keep your community clean.
-
-Snap Trash is a community garbage-reporting and cleanup-coordination platform. A reporter snaps a photo and location, the system finds **registered, verified cleaners serving that area**, notifies them, and the reporter tracks the job from *Waiting* to *Completed*. There is no points/badge/leaderboard system anywhere in the app — the workflow is purely **SNAP → REPORT → NOTIFY NEARBY CLEANERS → ACCEPT → CLEAN → COMPLETE**.
-
-This first version is a **no-build, dependency-free demo**: plain HTML/CSS/JavaScript (ES modules) with Leaflet for maps, and LocalStorage standing in for a real backend/database.
+> **A Community Garbage-Reporting & Cleanup-Coordination Platform — Prototype Overview**
 
 ---
 
-## 1. Installation
+## 📄 Abstract
 
-No build step or package manager is required — it's static HTML/JS/CSS. You only need any static file server (browsers block ES module `import` from `file://` URLs, so don't just double-click `index.html`).
+Uncollected garbage is one of the most visible, everyday environmental problems a community faces — yet reporting it is often frustrating and directionless. A resident who spots an illegal dump site or an overflowing collection point rarely knows **who to tell**, and even when they do report it, there is usually **no way to track what happens next**.
 
-```bash
-# Option A — Python (built into most systems)
-cd snap-trash
-python3 -m http.server 8080
-
-# Option B — Node
-cd snap-trash
-npx serve .
-
-# Option C — VS Code
-# install the "Live Server" extension, right-click index.html → "Open with Live Server"
-```
-
-## 2. Run
-
-Open your browser to:
-
-```
-https://snap-trash-829dd.web.app/#/
-```
-
-The app is responsive and works the same on desktop Chrome/Firefox/Safari and on Android/iOS mobile browsers. "Take Photo" opens the device camera on phones (via `capture="environment"`) and falls back to a normal file picker on desktop.
-
-## 3. Demo login credentials
-
-| Role     | Email                    | Password    |
-|----------|--------------------------|-------------|
-| Reporter | demo@snaptrash.com       | demo123     |
-| Cleaner  | cleaner@snaptrash.com    | cleaner123  |
-| Admin    | admin@snaptrash.com      | admin123    |
-
-These are clearly demo-only credentials, stored in plaintext in LocalStorage for the purpose of this offline demo (see `js/data.js`, `createUser`/`findUserByEmail`). They are structured so the password check can be swapped for a real hashed-password API call without touching any UI code — see §5.
-
-You can also sign up new **Reporter** or **Cleaner** accounts from the login screen. New cleaner accounts start as `Pending Verification` and won't receive live assignments until an admin (use the Admin demo account) approves them under **Admin → Cleaners**.
-
-## 4. The report → notify → cleanup workflow
-
-1. **Snap & Report** — A reporter opens *Report Garbage*, takes/uploads a photo (required), picks a category, sets a location (current GPS, a quick search of known local areas, manual entry, or tapping the map), adds an optional description, and submits.
-2. **Notify nearby cleaners** — `createReport()` in `js/data.js` calls `findNearbyCleaners()`, which looks at every **verified + active** cleaner and checks whether the report falls inside their named service area or within their configured response radius (haversine distance). Only those cleaners are notified — nobody else in the system sees it. The report's status becomes `Cleaner Notified`.
-3. **Accept** — A matching cleaner sees the report on their **Nearby Reports** dashboard, opens it, and taps *Accept Cleanup*. The report is now assigned to that cleaner (`Cleanup Accepted`); other nearby cleaners who were notified get an "already accepted" notice instead.
-4. **Clean** — The cleaner walks the job through **On the Way → Cleaning**, then uploads a completion photo and taps **Mark Cleanup as Completed**.
-5. **Track** — At every step the reporter gets a notification and can watch the same timeline update live on **My Reports → report details** (Waiting → Notified → Accepted → On the Way → Cleaning → Completed), including a before/after photo comparison once finished.
-6. **Admin oversight** — Admins verify/suspend cleaners, reassign or reject reports, review anything flagged as fake/duplicate/wrong-location/inappropriate, and see aggregate stats under **Admin → Analytics**.
-
-All of this happens client-side against LocalStorage in the demo — no server round trip — but the function boundaries (`createReport`, `acceptReport`, `setOnTheWay`, `startCleaning`, `completeCleanup`, `notifyUser`) are written so each one maps directly onto a future REST/WebSocket call.
-
-## 5. Connecting a real backend later
-
-The demo was deliberately structured so only `js/data.js` needs to be rewritten — every page module (`pages_*.js`) calls the functions exported from `data.js` (e.g. `createReport`, `acceptReport`, `getReportsByReporter`) rather than touching `localStorage` directly. To go live:
-
-1. **Stand up the schema.** The tables below are already the shape the app expects:
-   - `users(id, name, email, password_hash, role, status, created_at)`
-   - `garbage_reports(id, reporter_id, category, description, image_url, latitude, longitude, location_name, status, created_at, updated_at)`
-   - `cleaners(id, user_id, organization, verification_status, service_area, latitude, longitude, service_radius, is_active)`
-   - `cleanup_assignments(id, report_id, cleaner_id, accepted_at, started_at, completed_at, completion_image_url)`
-   - `notifications(id, user_id, report_id, title, message, is_read, created_at)`
-   - `cleanup_events(id, title, description, location, date, organizer)` *(reserved for future community cleanup-event scheduling)*
-2. **Swap the storage functions.** Replace the LocalStorage `read`/`write` calls in `js/data.js` with `fetch()` calls to a Node.js + Express (or any) API backed by PostgreSQL/MySQL. Keep the same function names/signatures (`createUser`, `createReport`, `acceptReport`, …) so no page file needs to change.
-3. **Real image storage.** Replace `fileToResizedDataUrl()` in `js/utils.js` with an upload to cloud storage (S3, GCS, etc.) that returns a URL to store in `image_url` / `completion_image_url`.
-4. **Real-time notifications.** Replace the synchronous `notifyUser()` writes with a WebSocket/Socket.IO push (or Firebase Cloud Messaging for mobile) so cleaner dashboards update without a page refresh; keep writing to the `notifications` table for the notification-center history.
-5. **Authentication.** Replace the plaintext password check in `pages_public.js`'s login handler with a real auth endpoint (hashed passwords, sessions/JWT). `getSession()`/`setSession()` in `data.js` can then store a token instead of a raw user id.
-6. **Geocoding.** Replace the `KNOWN_PLACES` mini-gazetteer in `pages_reporter.js` with a real geocoding API (e.g. Nominatim/OpenStreetMap, Google Geocoding) for the "search location" step.
-
-Recommended production stack (not required for this demo): **React + Vite** frontend, **Node.js + Express** API, **PostgreSQL/MySQL**, **Socket.IO** for real-time, **Firebase Cloud Messaging** for push, **OpenStreetMap + Leaflet** for maps (already used here), cloud object storage for images.
+**Snap Trash** proposes a simple, focused answer: let anyone **photograph and pin** a garbage problem, automatically **match it to verified local cleaners** who actually cover that area, and let the reporter **watch the job move from reported to resolved** — with no gamification, no leaderboard, and no distraction from the actual goal: **a cleaner neighborhood.**
 
 ---
 
-## Project structure
+## 🌍 1. Background & Context
 
-```
-snap-trash/
-├── index.html                # shell: topbar, #app router outlet, bottom nav, toast/modal roots
-├── css/
-│   └── style.css             # design tokens, components, responsive rules
-├── assets/
-│   └── logo.svg              # original camera+leaf mark
-├── js/
-│   ├── data.js                # LocalStorage "database" + all business logic (the layer to replace with a real API)
-│   ├── utils.js                # DOM helpers, toasts, modals, image resize, formatting
-│   ├── maps.js                 # Leaflet helpers (markers, radius circles, geolocation)
-│   ├── components.js           # shared HTML fragments (report card, notification item)
-│   ├── router.js                # tiny hash router with role guards
-│   ├── pages_public.js          # Landing, Login/Signup, Recycling Guide
-│   ├── pages_reporter.js        # Report wizard, My Reports, Report Details, Notifications, Profile, Garbage Map
-│   ├── pages_cleaner.js         # Cleaner Dashboard, Nearby Reports, My Assignments, Assignment details, Service Area
-│   ├── pages_admin.js           # Admin Dashboard, Reports, Cleaners (verification), Users, Service Areas, Analytics, Settings
-│   └── app.js                   # route table, role-based navigation, bootstraps everything
-└── README.md
-```
+Community cleanliness initiatives commonly fail for one of three reasons:
 
-## What's intentionally NOT here
+| Failure Point | What Usually Happens |
+|---|---|
+| 📵 **No clear reporting channel** | Complaints go to social media, informal group chats, or nowhere at all |
+| 🕳️ **No accountability loop** | A report is made, but the reporter never learns if — or when — it was handled |
+| 🎮 **Over-gamified apps** | Some platforms turn cleanup into a points/badge competition, which can shift focus away from the actual problem |
 
-No points, XP, badges, achievements, leaderboards, rankings, or rewards anywhere in the app — the whole experience is built around reporting, matching, and cleanup tracking only.
+Snap Trash is deliberately designed **against** the third pattern. There is no points system, no XP, no leaderboard anywhere in the platform — the entire experience is built around one clean loop: **Snap → Report → Notify → Accept → Clean → Complete.**
+
+---
+
+## ❗ 2. Statement of the Problem
+
+1. 📸 **"I see garbage — now what?"**
+   *(Residents have no simple, structured way to report a specific location and photo of a problem.)*
+
+2. 🧭 **"Who actually handles this, and do they even serve my area?"**
+   *(Cleanup groups and individuals aren't matched to reports by actual location coverage.)*
+
+3. 👀 **"Did anyone even see my report?"**
+   *(Without status tracking, a report disappears into silence — and trust in the system erodes.)*
+
+Snap Trash's core workflow exists specifically to close these three gaps.
+
+---
+
+## 🎯 3. Objectives of the System
+
+**General Objective**
+> To provide a lightweight, trackable platform that connects everyday citizens reporting garbage problems with verified local cleaners equipped to respond.
+
+**Specific Objectives**
+- ✅ Let any reporter **submit a garbage report** with a required photo, category, and precise location
+- ✅ Automatically **match reports to verified, active cleaners** serving that specific area (via service area / radius matching)
+- ✅ Give cleaners a clear **Accept → On the Way → Cleaning → Completed** workflow
+- ✅ Let reporters **track their report's status in real time**, end to end
+- ✅ Give admins tools to **verify cleaner legitimacy** and moderate flagged/fake reports
+- ✅ Deliberately **exclude gamification** — no points, badges, or rankings — to keep the focus on outcomes, not competition
+
+---
+
+## 👥 4. Stakeholder Overview
+
+| Role | Core Need | What the System Gives Them |
+|---|---|---|
+| 📷 **Reporter** | *"See it, report it, know it's handled"* | Photo/location reporting, live status tracking, notifications |
+| 🧹 **Cleaner** | *"Show me jobs I can actually reach"* | Nearby-report matching by service area, accept/status workflow |
+| 🛡️ **Admin** | *"Keep the system trustworthy"* | Cleaner verification, report moderation, analytics |
+
+Cleaners don't just self-list — new cleaner accounts start as **Pending Verification** and can't receive assignments until an admin approves them, which keeps the matching pool credible.
+
+---
+
+## 🌱 5. Significance of the Project
+
+- **To Residents:** Turns a vague sense of "someone should clean this up" into a trackable action with a visible outcome.
+- **To Local Cleanup Groups / Individuals:** Filters incoming reports to only the ones within their actual service area, instead of an undifferentiated flood of citywide complaints.
+- **To Local Governance / Admins:** Provides a lightweight verification and moderation layer, so the platform isn't just crowdsourced noise.
+- **To the Broader Conversation on Civic Tech:** Demonstrates that community-impact tools don't need points and leaderboards to drive participation — a transparent, trackable loop can be motivation enough.
+
+---
+
+## 🧭 6. Scope and Design Choices
+
+**In Scope**
+- ✔️ Photo + location-based garbage reporting (GPS, map tap, or search)
+- ✔️ Automatic nearby-cleaner matching via service area / radius (haversine distance)
+- ✔️ Full status lifecycle: *Waiting → Notified → Accepted → On the Way → Cleaning → Completed*
+- ✔️ Before/after photo comparison once a job is completed
+- ✔️ Admin verification of cleaners and moderation of flagged reports
+
+**Deliberately Excluded**
+- ❌ Points, XP, badges, achievements, leaderboards, or rankings of any kind
+- ❌ A live production backend *(this version runs on LocalStorage as a stand-in database)*
+
+> 🔍 **A note on the "no gamification" rule:** This isn't an oversight — it's a design position. The goal of Snap Trash is a cleaner community, not a competition to earn points for reporting trash. Every part of the workflow is built to reinforce *accountability*, not *scorekeeping*.
+
+---
+
+## 🧱 7. Current Form: A No-Build Demo
+
+This first version intentionally has **zero backend dependency** — plain HTML/CSS/JavaScript with Leaflet for maps and LocalStorage standing in for a real database. This was a deliberate choice to prove out the **workflow and matching logic** before investing in infrastructure, with the codebase already structured (`js/data.js` as the single data layer) so a real API can be swapped in without touching any page-level code.
+
+---
+
+## 🚀 8. Future Direction
+
+| Planned Enhancement | Purpose |
+|---|---|
+| 🗄️ Real backend (Node/Express + PostgreSQL) | Move from LocalStorage to a persistent, multi-user database |
+| ☁️ Cloud image storage | Replace local data-URL images with real hosted photo storage |
+| 🔔 Real-time push notifications | Update cleaner dashboards instantly via WebSockets / Firebase Cloud Messaging |
+| 🔐 Real authentication | Hashed passwords + sessions/JWT in place of the demo login |
+| 🗺️ Real geocoding | Replace the demo location gazetteer with a live geocoding API |
+
+---
+
+## 🏁 9. Conclusion
+
+Snap Trash is built around a simple, uncynical idea:
+
+> 🧹 *A community stays clean when reporting a problem is easy, response is fast, and everyone can see the loop close.*
+
+No points to chase. No leaderboard to climb. Just **Snap → Report → Notify → Accept → Clean → Complete.**
